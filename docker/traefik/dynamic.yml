@@ -1,0 +1,24 @@
+http:
+  routers:
+    spring-api:
+      entryPoints:
+        - web
+      rule: "PathPrefix(`/`)"
+      service: spring-api
+      middlewares:
+        - secure-response-headers
+
+  middlewares:
+    secure-response-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        referrerPolicy: no-referrer
+
+  services:
+    spring-api:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://host.docker.internal:8080"
+

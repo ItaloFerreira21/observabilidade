@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observabilidade"
+version = "0.1.0"
+description = "Sistema profissional de observabilidade em Python com FastAPI, Prometheus e Grafana."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.30.0,<1.0.0",
+    "pydantic-settings>=2.4.0,<3.0.0",
+    "prometheus-client>=0.20.0,<1.0.0",
+    "structlog>=24.2.0,<26.0.0",
+    "opentelemetry-api>=1.25.0,<2.0.0",
+    "opentelemetry-sdk>=1.25.0,<2.0.0",
+    "opentelemetry-exporter-otlp>=1.25.0,<2.0.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx2>=2.0.0,<3.0.0",
+    "mypy>=1.10.0,<2.0.0",
+    "pytest>=8.2.0,<9.0.0",
+    "pytest-cov>=5.0.0,<8.0.0",
+    "ruff>=0.5.0,<1.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
