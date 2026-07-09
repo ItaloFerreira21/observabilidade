@@ -20,5 +20,4 @@ http:
       loadBalancer:
         passHostHeader: true
         servers:
-          - url: "http://host.docker.internal:8080"
-
+          - url: "http://host.docker.internal:8081"

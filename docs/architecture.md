@@ -13,6 +13,9 @@ cliente ou servico
   -> middlewares de contexto, seguranca, metricas e logs
   -> /metrics
   -> Prometheus
+  -> logs de containers/arquivos
+  -> Alloy
+  -> Loki
   -> Grafana
 ```
 
@@ -26,7 +29,9 @@ cliente ou servico
 - `app/middlewares`: request ID, headers de seguranca, metricas e access log.
 - `docker/prometheus`: scrape da API.
 - `docker/traefik`: gateway observavel para rotear trafego externo e expor metricas.
-- `docker/grafana`: datasource e dashboard provisionados.
+- `docker/loki`: armazenamento local de logs.
+- `docker/alloy`: coleta logs de containers Docker e arquivos locais.
+- `docker/grafana`: datasources e dashboards provisionados.
 
 ## Decisoes tecnicas
 
@@ -39,6 +44,5 @@ cliente ou servico
 ## Evolucao prevista
 
 - Adicionar autenticacao e RBAC quando existirem usuarios ou recursos protegidos.
-- Adicionar Loki ou outra solucao de logs quando houver ambiente de execucao centralizado.
 - Adicionar collector OpenTelemetry e backend de traces, como Tempo ou Jaeger.
 - Adicionar alertas Prometheus/Grafana para erro 5xx, latencia, saturacao e indisponibilidade.

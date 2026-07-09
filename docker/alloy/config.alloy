@@ -1,0 +1,104 @@
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "observabilidade"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "(alloy|loki)"
+    action        = "drop"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = "local"
+  }
+
+  rule {
+    target_label = "source"
+    replacement  = "docker"
+  }
+}
+
+loki.source.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.containers.output
+  refresh_interval = "10s"
+  forward_to       = [loki.process.redact.receiver]
+}
+
+local.file_match "external_apps" {
+  path_targets = [
+    {
+      __path__     = "/var/log/observabilidade/**/*.log",
+      service      = "rep-cl",
+      environment  = "local",
+      source       = "file",
+    },
+  ]
+  sync_period = "10s"
+}
+
+loki.source.file "external_apps" {
+  targets    = local.file_match.external_apps.targets
+  forward_to = [loki.process.redact.receiver]
+}
+
+loki.process "redact" {
+  stage.drop {
+    older_than          = "15m"
+    drop_counter_reason = "too_old_for_local_ingest"
+  }
+
+  stage.replace {
+    expression = "(?i)bearer\\s+[a-z0-9._-]+"
+    replace    = "Bearer [REDACTED]"
+  }
+
+  stage.replace {
+    expression = "(?i)(authorization|cookie):\\s*[^\\n]+"
+    replace    = "[REDACTED_HEADER]"
+  }
+
+  stage.replace {
+    expression = "(?i)(password|passwd|senha|token|jwt)[=:]\\s*[^\\s,}\\]]+"
+    replace    = "[REDACTED_FIELD]"
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+livedebugging {
+  enabled = false
+}

@@ -7,6 +7,8 @@ Base profissional para um sistema de observabilidade em Python, preparada para i
 - FastAPI para API e middlewares.
 - Prometheus para coleta de métricas.
 - Grafana com datasource e dashboard provisionados.
+- Loki para logs centralizados.
+- Grafana Alloy para coleta de logs de containers e arquivos locais.
 - Logs estruturados em JSON com mascaramento de dados sensíveis.
 - OpenTelemetry preparado, desativado por padrão até existir um collector.
 - Docker Compose para execução local.
@@ -41,6 +43,8 @@ Serviços:
 - API: `http://localhost:8000`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
+- Loki: `http://localhost:3100`
+- Alloy: `http://localhost:12345`
 
 Credenciais locais do Grafana ficam em `.env`. Troque `GRAFANA_ADMIN_PASSWORD` antes de qualquer ambiente compartilhado.
 
@@ -57,5 +61,6 @@ mypy app
 - [Arquitetura](docs/architecture.md)
 - [Segurança](docs/security.md)
 - [Métricas](docs/metrics.md)
+- [Logs](docs/logs.md)
 - [Operação](docs/operations.md)
 - [Spring Boot sem muita alteração](docs/spring-boot-agent.md)
