@@ -3,8 +3,9 @@ from collections.abc import AsyncIterator
 import httpx2
 import pytest
 from fastapi import FastAPI
+from pydantic import ValidationError
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.security import sanitize_mapping
 from app.main import create_app
 
@@ -18,6 +19,7 @@ def anyio_backend() -> str:
 def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setenv("ENVIRONMENT", "local")
     monkeypatch.setenv("TRUSTED_HOSTS", "testserver,localhost,127.0.0.1")
+    monkeypatch.setenv("METRICS_AUTH_TOKEN", "")
     get_settings.cache_clear()
     return create_app()
 
@@ -58,6 +60,56 @@ async def test_metrics_endpoint_exposes_request_metrics(client: httpx2.AsyncClie
     assert response.status_code == 200
     assert "http_requests_total" in response.text
     assert 'path="/health/live"' in response.text
+
+
+@pytest.mark.anyio
+async def test_metrics_endpoint_requires_bearer_token_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.setenv("TRUSTED_HOSTS", "testserver,localhost,127.0.0.1")
+    monkeypatch.setenv("METRICS_AUTH_TOKEN", "test-metrics-token")
+    get_settings.cache_clear()
+    protected_app = create_app()
+    transport = httpx2.ASGITransport(protected_app)
+
+    async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as protected_client:
+        denied_response = await protected_client.get("/metrics")
+        allowed_response = await protected_client.get(
+            "/metrics", headers={"Authorization": "Bearer test-metrics-token"}
+        )
+
+    assert denied_response.status_code == 403
+    assert allowed_response.status_code == 200
+    get_settings.cache_clear()
+
+
+def test_production_requires_metrics_token() -> None:
+    with pytest.raises(ValidationError, match="METRICS_AUTH_TOKEN"):
+        Settings(environment="production", metrics_enabled=True, metrics_auth_token=None)
+
+
+def test_production_rejects_insecure_otlp() -> None:
+    with pytest.raises(ValidationError, match="Insecure OTLP"):
+        Settings(
+            environment="production",
+            metrics_enabled=False,
+            otel_enabled=True,
+            otel_exporter_otlp_endpoint="collector.example.internal:4317",
+            otel_exporter_otlp_insecure=True,
+        )
+
+
+def test_production_allows_secure_otlp() -> None:
+    settings = Settings(
+        environment="production",
+        metrics_enabled=False,
+        otel_enabled=True,
+        otel_exporter_otlp_endpoint="collector.example.internal:4317",
+        otel_exporter_otlp_insecure=False,
+    )
+
+    assert settings.otel_exporter_otlp_insecure is False
 
 
 @pytest.mark.anyio

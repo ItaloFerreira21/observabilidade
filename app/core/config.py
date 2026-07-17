@@ -1,7 +1,8 @@
 from functools import lru_cache
+from hmac import compare_digest
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Environment = Literal["local", "development", "staging", "production"]
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
 
     docs_enabled: bool = True
     metrics_enabled: bool = True
+    metrics_auth_token: SecretStr | None = None
 
     cors_allowed_origins: CsvList = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:8000"]
@@ -53,7 +55,7 @@ class Settings(BaseSettings):
 
     otel_enabled: bool = False
     otel_exporter_otlp_endpoint: str | None = None
-    otel_exporter_otlp_insecure: bool = True
+    otel_exporter_otlp_insecure: bool = False
 
     @field_validator("cors_allowed_origins", "cors_allowed_methods", "trusted_hosts", mode="before")
     @classmethod
@@ -65,6 +67,13 @@ class Settings(BaseSettings):
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator("metrics_auth_token", mode="before")
+    @classmethod
+    def normalize_metrics_auth_token(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
         if self.environment == "production":
@@ -72,6 +81,12 @@ class Settings(BaseSettings):
                 raise ValueError("CORS wildcard is not allowed in production.")
             if "*" in self.trusted_hosts:
                 raise ValueError("Trusted host wildcard is not allowed in production.")
+            if self.metrics_enabled and self.metrics_auth_token is None:
+                raise ValueError("METRICS_AUTH_TOKEN must be set when metrics are enabled in production.")
+            if self.otel_enabled and not self.otel_exporter_otlp_endpoint:
+                raise ValueError("OTEL_EXPORTER_OTLP_ENDPOINT must be set when OTLP is enabled in production.")
+            if self.otel_enabled and self.otel_exporter_otlp_insecure:
+                raise ValueError("Insecure OTLP transport is not allowed in production.")
         return self
 
     @property
@@ -81,6 +96,14 @@ class Settings(BaseSettings):
     @property
     def should_enable_docs(self) -> bool:
         return self.docs_enabled and not self.is_production
+
+    def is_metrics_request_authorized(self, authorization: str | None) -> bool:
+        if self.metrics_auth_token is None:
+            return True
+
+        scheme, _, provided_token = (authorization or "").partition(" ")
+        expected_token = self.metrics_auth_token.get_secret_value()
+        return scheme.lower() == "bearer" and compare_digest(provided_token, expected_token)
 
 
 @lru_cache

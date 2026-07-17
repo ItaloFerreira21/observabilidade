@@ -13,5 +13,7 @@ dist/
 build/
 .idea/
 .vscode/
+.obsidian/
+*.md
 logs/*
 !logs/.gitkeep

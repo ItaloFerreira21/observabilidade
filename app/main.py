@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import cast
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
@@ -102,7 +102,10 @@ def register_routes(app: FastAPI, settings: Settings) -> None:
         app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
 
-async def metrics_endpoint() -> Response:
+async def metrics_endpoint(request: Request) -> Response:
+    settings: Settings = request.app.state.settings
+    if not settings.is_metrics_request_authorized(request.headers.get("authorization")):
+        raise HTTPException(status_code=403, detail="Metrics access denied.")
     return metrics_response()
 
 

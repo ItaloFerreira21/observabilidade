@@ -2,12 +2,12 @@ name: observabilidade
 
 services:
   gateway:
-    image: ${TRAEFIK_IMAGE:-traefik:v3.7.5}
+    image: traefik@sha256:d6858791f9e74df44ca4014166647c41cdc2abd3bf2a71b832ca4e1c6a91b257
     volumes:
       - ./docker/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./docker/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
     ports:
-      - "${GATEWAY_PORT:-8088}:8080"
+      - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8088}:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     read_only: true
@@ -31,13 +31,14 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DOCS_ENABLED: ${DOCS_ENABLED:-true}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      METRICS_AUTH_TOKEN: ${METRICS_AUTH_TOKEN:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,testserver,api,observabilidade-api}
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
+      OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-false}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
     read_only: true
     tmpfs:
       - /tmp
@@ -55,17 +56,18 @@ services:
       - observability
 
   prometheus:
-    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.12.0}
+    image: prom/prometheus@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
-      - --web.enable-lifecycle
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+    secrets:
+      - metrics_auth_token
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -81,14 +83,14 @@ services:
       - observability
 
   loki:
-    image: ${LOKI_IMAGE:-grafana/loki:3.5.0}
+    image: grafana/loki@sha256:4c431d2e6b9b38718694b31c5d56be7c80dc69c513215fde1aeb5b02cd4e2665
     command:
       - -config.file=/etc/loki/loki.yml
     volumes:
       - ./docker/loki/loki.yml:/etc/loki/loki.yml:ro
       - loki-data:/loki
     ports:
-      - "${LOKI_PORT:-3100}:3100"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
     read_only: true
     tmpfs:
       - /tmp
@@ -100,7 +102,7 @@ services:
       - observability
 
   alloy:
-    image: ${ALLOY_IMAGE:-grafana/alloy:v1.9.2}
+    image: grafana/alloy@sha256:5039cc7a3cbde07120e757decc40f8f55f82c9bd0db45892a8b0e0c9a3371f4b
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -109,9 +111,29 @@ services:
     volumes:
       - ./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - ./logs:/var/log/observabilidade:ro
+    depends_on:
+      - loki
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - observability
+
+  alloy-docker:
+    image: grafana/alloy@sha256:5039cc7a3cbde07120e757decc40f8f55f82c9bd0db45892a8b0e0c9a3371f4b
+    profiles: ["docker-logs"]
+    command:
+      - run
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/tmp/alloy
+      - /etc/alloy/config.docker.alloy
+    volumes:
+      - ./docker/alloy/config.docker.alloy:/etc/alloy/config.docker.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "${ALLOY_PORT:-12345}:12345"
     depends_on:
       - loki
     read_only: true
@@ -125,10 +147,10 @@ services:
       - observability
 
   grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana:13.0.2}
+    image: grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-in-production}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SECURITY_COOKIE_SECURE: "false"
@@ -138,7 +160,7 @@ services:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
       - loki
@@ -157,3 +179,7 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
+
+secrets:
+  metrics_auth_token:
+    environment: METRICS_AUTH_TOKEN
